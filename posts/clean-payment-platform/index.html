@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="ru" lang="ru">
+<head>
+  <link href="https://gmpg.org/xfn/11" rel="profile">
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+  <meta name="generator" content="Hugo 0.68.3" />
+
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>Чистая архитектура в платёжной платформе &middot; My Notes</title>
+  <meta name="description" content="" />
+
+  
+  <link type="text/css" rel="stylesheet" href="https://fokinpv.github.io/css/print.css" media="print">
+  <link type="text/css" rel="stylesheet" href="https://fokinpv.github.io/css/poole.css">
+  <link type="text/css" rel="stylesheet" href="https://fokinpv.github.io/css/syntax.css">
+  <link type="text/css" rel="stylesheet" href="https://fokinpv.github.io/css/hyde.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Abril+Fatface|PT+Sans:400,400i,700">
+
+
+  
+  <link rel="apple-touch-icon-precomposed" sizes="144x144" href="/apple-touch-icon-144-precomposed.png">
+  <link rel="shortcut icon" href="/favicon.png">
+
+  
+  
+</head>
+
+  <body class=" ">
+  <aside class="sidebar">
+  <div class="container sidebar-sticky">
+    <div class="sidebar-about">
+      <a href="https://fokinpv.github.io/"><h1>My Notes</h1></a>
+      <p class="lead">
+      An elegant open source and mobile first theme for <a href="http://hugo.spf13.com">hugo</a> made by <a href="http://twitter.com/mdo">@mdo</a>. Originally made for Jekyll.
+      </p>
+    </div>
+
+    <nav>
+      <ul class="sidebar-nav">
+        <li><a href="https://fokinpv.github.io/">Home</a> </li>
+        
+      </ul>
+    </nav>
+
+    <p>&copy; 2020. All rights reserved. </p>
+  </div>
+</aside>
+
+    <main class="content container">
+    <div class="post">
+  <h1>Чистая архитектура в платёжной платформе</h1>
+  <time datetime=2019-03-26T08:47:11&#43;0100 class="post-date">Tue, Mar 26, 2019</time>
+  <p>Хочу рассказать, как мы применили чистую архитектуру в платежной платформе.
+Сегодня наша платежная платформа представляет собой целый агрегатор самых разных финансовых решений, хотя продукт достаточно молодой, ему не более 1,5 лет.</p>
+<p><img src="https://habrastorage.org/webt/ue/xf/ta/uexftadd08xtr2zsf8wcsivhyeo.png" alt="image"></p>
+<p><!-- raw HTML omitted --></p>
+<h2 id="немного-предыстории">Немного предыстории</h2>
+<p>Идея о разработке с нуля как отдельной системы возникла, когда у бизнеса появилась потребность изолировать платёжные методы и то, что с ними связано, а в дальнейшем еще и предоставлять B2B решение. Поэтому сегодня мы взаимодействуем с основным продуктом как с внешним клиентом, предоставляя <code>API</code> для интеграции. Разработка происходит итеративно для того, чтобы обеспечить высокий темп и доставлять функционал постоянно.</p>
+<p>За время жизни нашей платформы значительно расширилась кодовая база и количество сервисов. Сегодня в платформе есть:</p>
+<ul>
+<li>Больше 10 сервисов, которые отвечают за основную функциональность системы;</li>
+<li>Около 50 сервисов для интеграции платёжных провайдеров;</li>
+<li>Система реконсиляции, которая помогает автоматизировать сверку состояния транзакций из внутреннего биллинга с выгрузками из внешних платёжных систем;</li>
+<li>Бэк-офисы для внутреннего использования и для внешних клиентов.</li>
+</ul>
+<p>По организации кода наши сервисы прошли такие этапы, как:</p>
+<ol>
+<li><em>Толстые модели</em>;</li>
+<li>Применение <strong>MVC</strong> подхода с выделением бизнес-логики в <em>контроллеры</em>.</li>
+</ol>
+<p>Вместе с тем, у бизнеса появляются новые требования, под которые система не была запланирована изначально. Несмотря на то, что в нашей команде работают опытные инженеры (у всех более 10 лет опыта), высокий темп разработки и различия в подходах так или иначе приводит к ряду трудностей и вопросов. Ключевая проблема состоит в разнице реализации бизнес-логики и расползании кода по разным сервисам. А основной вопрос заключается в том, как организовать код в конкретном сервисе, и в каком сервисе должен находиться конкретный код.</p>
+<p>В нашей компании некоторые команды уже успешно применяют подходы <em>&ldquo;Чистой архитектуры&rdquo;</em> (<a href="https://m.habr.com/ru/company/exness/blog/494370/">Чистая архитектура глазами Python разработчика</a>),  и мы также обратили внимание на эту концепцию. Чтобы договориться, как её внедрять, мы провели несколько встреч, на которых озвучили проблемы и постарались выработать их решения.</p>
+<h2 id="чистая-архитектура">Чистая архитектура</h2>
+<p>Книга Роберта Мартина, на мой взгляд, это не набор готовых рецептов, а скорее концепция и сборник рекомендаций, на что стоит обращать внимание при разработке системы, чтобы она была максимально поддерживаемой, тестируемой, готовой эволюционировать со временем. Также в его книге много названий для абстракций, таких как <em>Adapter</em>, <em>Gateway</em>, <em>Repository</em>, <em>Presenter</em>, которые часто перетягивают своё внимание при реализации подходов <em>&ldquo;Чистой архитектуры&rdquo;</em>.</p>
+<p>Поэтому, вспомнив выражение, что &ldquo;плохая абстракция хуже, чем дублирование кода&rdquo; и пересмотрев выступление <a href="https://www.youtube.com/watch?v=ZsHMHukIlJY&amp;list=LLML27YIoUbcJQkbtvPzr7YQ">Seven Ineffective Coding Habits by Kevlin Henney</a>, мы решили не торопиться добавлять дополнительные термины, которые сделали бы наш код <em>&ldquo;чище&rdquo;</em>. Первым делом мы разобрались с центральной частью диаграммы &ldquo;Чистой архитектуры&rdquo;, а именно, что для нас есть <strong>Entity</strong> и <strong>Use Cases</strong>.</p>
+<p>Для выделения <strong>сущностей</strong> мы воспользовались правилом от Роберта Мартина: “определять сущность как тó‎, что помогает заработать или сохранить деньги”. Итак, Entity в нашем случае это набор критически важных <em>бизнес-данных</em> в сочетании с критически важными <em>бизнес-правилами</em> — то, без чего бизнес не смог бы существовать. А <strong>сценарием использования</strong> стало то, что автоматизирует эти бизнес-правила и образует следующий слой.</p>
+<p>Похожее правило применимо и для отдельного сервиса. Там к сущности можно отнести не только что-то имеющее отношение к деньгам, но и то, без чего сервис не появился бы. Есть, конечно, и исключения, ведь не в каждом сервисе сразу получается выделить такую &ldquo;сервисообразующую&rdquo; вещь, да и не каждый сервис несёт важное значение с точки зрения бизнеса или архитектуры. Он может выполнять чисто утилитарную функцию, преобразовывать данные, собирать метрики или запускать какую-то сложную операцию в бэкграунде.</p>
+<h2 id="кричащая-архитектура">Кричащая архитектура</h2>
+<p>По итогу всех этих изменений мы хотели реализовать такую структуру системы и сервисов, которая бы “разговаривала” на языке бизнеса и пользовательских историй. А новый программист имел бы возможность изучить варианты использования, даже не зная, как будут предоставляться эти услуги, в смысле фреймворков и технологий.</p>
+<p>В нашем случае на роль центральной бизнес-сущности отлично подходят транзакции или инвойсы (invoices). Чем больше таких записей в базе данных со статусом <strong>Accepted</strong>, тем прибыльнее наш <em>&ldquo;бизнес&rdquo;</em>. Роль сценариев использования выполняют различные виды платежей, например, депозиты, выводы, платежи с помощью карты, возврат карточных платежей, платежи с перенаправлением пользователя на стороннюю платёжную систему и т.п.</p>
+<p>Далее мы подошли к одной из сложнейших задач в computer science — наименование переменных. Для примера приведу один из вариантов изменения структуры сервиса биллинга, который реализует основную логику создания платежей.</p>
+<p>Это пример, как было до, с разделением по функциональным слоям:</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">billing<span style="color:#f92672">/</span>
+    __init__<span style="color:#f92672">.</span>py
+    db<span style="color:#f92672">.</span>py
+    models<span style="color:#f92672">.</span>py
+    handlers<span style="color:#f92672">.</span>py
+    server<span style="color:#f92672">.</span>py
+    helpers<span style="color:#f92672">.</span>py
+    utils<span style="color:#f92672">.</span>py
+    routes<span style="color:#f92672">.</span>py
+</code></pre></div><p>И предложение по изменению с разбиением на бизнес-фичи и группировкой вертикально:</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">billing<span style="color:#f92672">/</span>
+    __init__<span style="color:#f92672">.</span>py
+    invoices<span style="color:#f92672">/</span>  <span style="color:#75715e"># Entity&#39;s methods</span>
+        __init__<span style="color:#f92672">.</span>py
+        create<span style="color:#f92672">.</span>py
+        search<span style="color:#f92672">.</span>py
+        update<span style="color:#f92672">.</span>py
+    payments<span style="color:#f92672">/</span>  <span style="color:#75715e"># Business cases</span>
+        __init__<span style="color:#f92672">.</span>py
+        cards<span style="color:#f92672">.</span>py
+        pushes<span style="color:#f92672">.</span>py
+        standard<span style="color:#f92672">.</span>py
+    routing<span style="color:#f92672">/</span>  <span style="color:#75715e"># Business cases</span>
+        __init__<span style="color:#f92672">.</span>py
+        channels<span style="color:#f92672">.</span>py
+        methods<span style="color:#f92672">.</span>py
+        routing<span style="color:#f92672">.</span>py
+</code></pre></div><p>Конечно, не сразу удаётся выбрать хорошее название и разграничить, к каким частям относится тот или иной флоу. Но по мере того, как растет понимание требований, и то, как именно используются основные <strong>сущности</strong>, структура сервиса также будет меняться. Покрытие тестами и слабое зацепление (<strong>Low coupling</strong>) должны помочь в этом.</p>
+<p>Следующим шагом мы решили сосредоточиться на зависимостях, которые не относятся к бизнес-требованиям. Стали выделять и изолировать другие слои, которые Мартин называет не значащими деталями, например, слой работы с базой данных, слой с валидацией данных, слой для формирования ответов <code>API</code>. Мы начали инкапсулировать работу с базой данных за <em>&ldquo;интерфейсами&rdquo;</em>.
+Ещё одним правилом разделения на слои является то, что границы слоев должны пересекать только простые объекты или DTO. Мы не стали реализовывать модели ORM в виде простых классов или дата классов и писать слой для преобразования из одного в другое. Мы отложили это решение и для простоты начали рассматривать модели ORM как те самые &ldquo;простые&rdquo; объекты.</p>
+<p>На уровне кода связывание высокоуровневых политик с низкоуровневыми деталями происходит с применением инверсии зависимостей (Dependency Inversion Principle).</p>
+<h2 id="инверсия-зависимостей">Инверсия зависимостей</h2>
+<p>Возможность скрытия деталей реализации за интерфейсом и инверсия зависимостей основаны на применении полиморфизма. Давайте вспомним одно из его определений. Полиморфизм — возможность предоставления единого интерфейса для сущностей разного типа. На уровне кода это осуществляется в виде предоставления методов для взаимодействия со структурой данных, сервисом, реализацией определённого поведения или какой-то низкоуровневой политикой, например БД . Так мы завязываемся не на конкретную реализацию, а на декларацию какого-то поведения в виде интерфейса.</p>
+<h2 id="особенности-python">Особенности Python</h2>
+<p>Здесь хочется обсудить особенности и возможности <strong>Python</strong> при реализации абстракций.</p>
+<p>Многие принципы в <strong>Python</strong> носят характер договорённостей и обычно достаточно нестрогих, которые при желании можно нарушать. Самый классический пример это инкапсуляции в классах. Также можно вспомнить <code>import this</code>, которая выстраивает философскую идею языка.</p>
+<p>Ещё одно свойство языка, которое позволяет реализовывать лаконичный и читаемый код, это утиная типизация. Используя данную типизацию, у нас есть возможность реализовать полиморфное поведение без использования наследования и иерархии классов. Например, если мы хотим реализовать тип данных с возможностью сложения, достаточно реализовать магический метод <code>__add__</code>. А что это будет, строки или кватернионы, уже не важно. Также в <code>Python</code> объявление интерфейса может происходить и без использования классов.</p>
+<p>Часто при реализации каких-то паттернов происходит копирование подходов языка, на котором он появился или для которого он более характерен. Как пример — создание интерфейса с использованием абстрактного класса.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#66d9ef">class</span> <span style="color:#a6e22e">AbstractStorage</span>:
+    <span style="color:#66d9ef">def</span> <span style="color:#a6e22e">create</span>(self, data):
+        <span style="color:#66d9ef">raise</span> <span style="color:#a6e22e">NotImplementedError</span>
+    <span style="color:#66d9ef">def</span> <span style="color:#a6e22e">get_by_id</span>(self, id_):
+        <span style="color:#66d9ef">raise</span> <span style="color:#a6e22e">NotImplementedError</span>
+</code></pre></div><p>Но согласно утиной типизации, класс уже декларирует новый тип с интерфейсом даже без необходимости наследования от <code>AbstractStorage</code>. Тем не менее, он может быть необходим как комментарий, подсказка разработчику или статическому анализатору о том, что существует интерфейс, который нужно реализовать.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#75715e"># Python pseudocode</span>
+<span style="color:#f92672">from</span> billing <span style="color:#f92672">import</span> models
+
+<span style="color:#66d9ef">class</span> <span style="color:#a6e22e">InvoiceStorage</span>:
+    <span style="color:#66d9ef">def</span> __init__(self, db):
+        self<span style="color:#f92672">.</span>db <span style="color:#f92672">=</span> db
+
+    <span style="color:#66d9ef">def</span> <span style="color:#a6e22e">create</span>(self, data):
+        invoice <span style="color:#f92672">=</span> models<span style="color:#f92672">.</span>Invoice(<span style="color:#f92672">**</span>data)
+        self<span style="color:#f92672">.</span>db<span style="color:#f92672">.</span>session<span style="color:#f92672">.</span>add(invoice)
+        self<span style="color:#f92672">.</span>db<span style="color:#f92672">.</span>commit()
+        <span style="color:#66d9ef">return</span> invoice
+
+    <span style="color:#66d9ef">def</span> <span style="color:#a6e22e">get_by_id</span>(self, id_):
+        <span style="color:#66d9ef">return</span> self<span style="color:#f92672">.</span>db<span style="color:#f92672">.</span>session<span style="color:#f92672">.</span>query<span style="color:#f92672">.</span>get(id<span style="color:#f92672">=</span>id_)
+</code></pre></div><p>К слову, не всегда есть необходимость реализовывать интерфейсы, используя классы. Если у нас нет определённого состояния, которое нужно сохранять и изменять, или данный объект будет существовать лишь в одном экземпляре, объявление функций в модуле может быть достаточным для создания интерфейса.</p>
+<p>Пример предоставления интерфейсов с помощью модулей:</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#75715e"># directories structure</span>
+billing<span style="color:#f92672">/</span>
+    invoices<span style="color:#f92672">/</span>
+        __init__<span style="color:#f92672">.</span>py
+        create<span style="color:#f92672">.</span>py
+    payments<span style="color:#f92672">/</span>
+        cards<span style="color:#f92672">/</span>
+            __init__<span style="color:#f92672">.</span>py
+            refund<span style="color:#f92672">.</span>py
+            deposit<span style="color:#f92672">.</span>py
+            withdrawal<span style="color:#f92672">.</span>py
+        __init__<span style="color:#f92672">.</span>py
+        basic<span style="color:#f92672">.</span>py
+        manual<span style="color:#f92672">.</span>py
+        direct<span style="color:#f92672">.</span>py
+    __init__<span style="color:#f92672">.</span>py
+    api<span style="color:#f92672">.</span>py
+</code></pre></div><div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#75715e"># payments/__init__.py</span>
+<span style="color:#f92672">from</span> . <span style="color:#f92672">import</span> basic, cards, manual, direct
+
+<span style="color:#75715e"># payments/cards/__init__.py</span>
+<span style="color:#f92672">from</span> . <span style="color:#f92672">import</span> refund, deposit, withdrawal
+
+<span style="color:#75715e"># payments/cards/deposit.py</span>
+<span style="color:#f92672">from</span> billing <span style="color:#f92672">import</span> invoices
+
+<span style="color:#66d9ef">def</span> <span style="color:#a6e22e">create</span>(data: dict):
+    <span style="color:#66d9ef">return</span> invoices<span style="color:#f92672">.</span>create<span style="color:#f92672">.</span>new(data)
+
+<span style="color:#f92672">...</span>
+
+<span style="color:#75715e"># payments/manual.py</span>
+<span style="color:#f92672">from</span> billing <span style="color:#f92672">import</span> invoices
+
+<span style="color:#66d9ef">def</span> <span style="color:#a6e22e">create</span>(data: dict):
+    <span style="color:#66d9ef">return</span> invoices<span style="color:#f92672">.</span>create<span style="color:#f92672">.</span>new(data)
+
+<span style="color:#f92672">...</span>
+
+<span style="color:#75715e"># api.py</span>
+<span style="color:#f92672">from</span> billing <span style="color:#f92672">import</span> invoices, payments
+
+<span style="color:#66d9ef">def</span> <span style="color:#a6e22e">basic</span>(request):
+    payload <span style="color:#f92672">=</span> request<span style="color:#f92672">.</span>json()
+    invoice <span style="color:#f92672">=</span> payment<span style="color:#f92672">.</span>basic<span style="color:#f92672">.</span>create(payload)
+    response_data <span style="color:#f92672">=</span> invoices<span style="color:#f92672">.</span>view<span style="color:#f92672">.</span>minimal(invoice)
+    <span style="color:#66d9ef">return</span> web_response(json<span style="color:#f92672">=</span>response_data)
+
+
+<span style="color:#66d9ef">def</span> <span style="color:#a6e22e">cards_deposit</span>(request):
+    payload <span style="color:#f92672">=</span> request<span style="color:#f92672">.</span>json()
+    invoice <span style="color:#f92672">=</span> payment<span style="color:#f92672">.</span>cards<span style="color:#f92672">.</span>deposit<span style="color:#f92672">.</span>create(payload)
+    response_data <span style="color:#f92672">=</span> invoices<span style="color:#f92672">.</span>view<span style="color:#f92672">.</span>detailed(invoice)
+    <span style="color:#66d9ef">return</span> web_response(json<span style="color:#f92672">=</span>response_data)
+
+<span style="color:#f92672">...</span>
+</code></pre></div><p>Этот пример не предполагает применение какого-то фреймворка, и <code>request</code> здесь иллюстрирует внешний запрос. Это может быть <strong><code>http</code></strong> или <strong><code>grpc</code></strong>, <strong><code>RPC</code></strong> или <strong><code>REST</code></strong>, детали нам не важны. То, что у каждого типа платежей есть метод <code>create</code> это тоже деталь, которая может отличаться для конкретного случая, а методы могут называться по-разному, чтобы быть более &ldquo;говорящими&rdquo;. Главное, что хочется показать — мы имеем возможность определить пакет или модуль, который реализует какую-то высокоуровневую политику вроде создания платежей, а посредством импортов мы можем как предоставить интерфейс для взаимодействия, так и скрыть детали реализации. Это уже вопрос договорённостей.</p>
+<h2 id="организация-кода">Организация кода</h2>
+<p>Остаётся вопрос: где расположить и как группировать код в те самые низкоуровневые компоненты, которые отвечают за взаимодействие с базой данных или веб-фреймворком? Здесь, как говорится, &ldquo;дьявол в деталях&rdquo; имплементации.</p>
+<p>Есть несколько подходов, и один из часто встречающихся это <em>горизонтальное</em> разбиение (Package by Layer), при котором группируют код, основываясь на том, для чего <em>технически</em> он нужен.</p>
+<p>Часто можно увидеть такую структуру:</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">app<span style="color:#f92672">/</span>
+    models<span style="color:#f92672">.</span>py  <span style="color:#75715e"># ORM models</span>
+    views<span style="color:#f92672">.</span>py<span style="color:#f92672">.</span> <span style="color:#75715e"># WEB views</span>
+    controllers<span style="color:#f92672">.</span>py  <span style="color:#75715e"># Business logic</span>
+    utils<span style="color:#f92672">.</span>py
+    schemas<span style="color:#f92672">.</span>py<span style="color:#f92672">.</span> <span style="color:#75715e"># Validation schemas for requests and responses</span>
+    main<span style="color:#f92672">.</span>py
+</code></pre></div><p>Или, используя термины из примеров <em>&ldquo;Чистой архитектуры&rdquo;</em>, <code>DDD</code> или других похожих фреймворков:</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">app<span style="color:#f92672">/</span>
+    entities<span style="color:#f92672">/</span>
+    usecases<span style="color:#f92672">/</span>
+    services<span style="color:#f92672">/</span>
+    adapters<span style="color:#f92672">/</span>
+    repositories<span style="color:#f92672">/</span>
+    main<span style="color:#f92672">.</span>py
+</code></pre></div><p>Из плюсов такого подхода — можно просто что-то начать и запустить и, используя устоявшиеся термины, сгруппировать код. Из минусов — такая структура не <em>&ldquo;кричит&rdquo;</em> о своём практическом назначении, и по мере ее усложнения всё равно придется задумываться о более дробной организации.</p>
+<p>Ещё один подход— группировка по бизнес-фичам, доменам или общему назначению кода (Package by Features). Получается, что код группируется <em>вертикально</em> относительно технического предназначения.</p>
+<p>Пример вертикального разбиения:</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">billing<span style="color:#f92672">/</span>
+    __init__<span style="color:#f92672">.</span>py
+     invoices<span style="color:#f92672">/</span>  <span style="color:#75715e"># Entity and Methods</span>
+        __init<span style="color:#f92672">.</span>py
+        db<span style="color:#f92672">.</span>py<span style="color:#f92672">.</span> <span style="color:#75715e"># Specific queries</span>
+        models<span style="color:#f92672">.</span>py  <span style="color:#75715e"># ORM models</span>
+        create<span style="color:#f92672">.</span>py  <span style="color:#75715e"># Entity&#39;s method</span>
+        search<span style="color:#f92672">.</span>py
+        update<span style="color:#f92672">.</span>py
+     payments<span style="color:#f92672">/</span>  <span style="color:#75715e"># Use Cases</span>
+         cards<span style="color:#f92672">/</span>
+             __init__<span style="color:#f92672">.</span>py
+             deposit<span style="color:#f92672">.</span>py  <span style="color:#75715e"># Use Case</span>
+             refund<span style="color:#f92672">.</span>py
+             validate<span style="color:#f92672">.</span>py  <span style="color:#75715e"># Validate data for use case</span>
+             view<span style="color:#f92672">.</span>py <span style="color:#75715e"># Create data for response</span>
+         __init__<span style="color:#f92672">.</span>py
+         basic<span style="color:#f92672">.</span>py  <span style="color:#75715e"># Use Case</span>
+         manual<span style="color:#f92672">.</span>py
+         direct<span style="color:#f92672">.</span>py
+         validate<span style="color:#f92672">.</span>py  <span style="color:#75715e"># Validate data for use case</span>
+         view<span style="color:#f92672">.</span>py <span style="color:#75715e"># Create data for response</span>
+     routing<span style="color:#f92672">/</span>  <span style="color:#75715e"># Use Case</span>
+         __init__<span style="color:#f92672">.</span>py
+         db<span style="color:#f92672">.</span>py
+         models<span style="color:#f92672">.</span>py
+         routing<span style="color:#f92672">.</span>py
+</code></pre></div><p>При таком подходе уже более понятно назначение проекта. Вместе с тем, не все бизнес-фичи имеют внешний интерфейс для вызова через <code>API</code>, и не все флоу обращаются к базе данных, поэтому есть возможность поместить такие модули только в те пакеты, в которых это необходимо. Минусы у такого подхода также возникают при росте сложности системы. Например, при взаимодействии разных флоу с базой данных сложно определить, к какому домену относится та или другая модель ORM.</p>
+<p>Ко всему этому, существуют и другие подходы: <em>Port and Adapters</em>, <em>Hexagonal architecture</em>, которые созданы для того, чтобы отделить код, связанный с предметной областью от деталей технической реализации.</p>
+<p>Как всегда идеальный вариант вырабатывается в результате практики и постоянного эволюционирования системы. Главный критерий, на мой взгляд — структура должна оставаться максимально выразительной. Так, на данный момент мы пока не выбрали единственного подхода и используем оба.</p>
+<p>А вот пример с группировкой по фичам и отдельного слоя взаимодействия с базой данных:</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">billing<span style="color:#f92672">/</span>
+    invoices<span style="color:#f92672">/</span>  <span style="color:#75715e"># Entity&#39;s Methods</span>
+        __init__<span style="color:#f92672">.</span>py
+        db<span style="color:#f92672">.</span>py  <span style="color:#75715e"># DB specific queries</span>
+        create<span style="color:#f92672">.</span>py
+        search<span style="color:#f92672">.</span>py
+        update<span style="color:#f92672">.</span>py
+    payments<span style="color:#f92672">/</span>  <span style="color:#75715e"># Use Cases</span>
+        __init__<span style="color:#f92672">.</span>py
+        basic<span style="color:#f92672">.</span>py
+        cards<span style="color:#f92672">.</span>py
+        manual<span style="color:#f92672">.</span>py
+        validate<span style="color:#f92672">.</span>py  <span style="color:#75715e"># Methods to validate data for Use Cases</span>
+        view<span style="color:#f92672">.</span>py  <span style="color:#75715e"># Methods to create data for responses from Use Cases</span>
+    __init__<span style="color:#f92672">.</span>py
+    api<span style="color:#f92672">.</span>py <span style="color:#75715e"># Web views</span>
+    db<span style="color:#f92672">.</span>py <span style="color:#75715e"># DB connection and session</span>
+    models<span style="color:#f92672">.</span>py <span style="color:#75715e"># ORM models</span>
+</code></pre></div><div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#75715e"># __init__.py</span>
+<span style="color:#f92672">from</span> . <span style="color:#f92672">import</span> search, create, update
+
+
+<span style="color:#75715e"># invoices/create.py</span>
+<span style="color:#f92672">from</span> . <span style="color:#f92672">import</span> db
+
+<span style="color:#66d9ef">def</span> <span style="color:#a6e22e">new</span>(status):
+    invoice <span style="color:#f92672">=</span> db<span style="color:#f92672">.</span>create_invoice(status<span style="color:#f92672">=</span>status)
+    <span style="color:#66d9ef">return</span> invoice
+
+
+<span style="color:#75715e"># invoices/search.py</span>
+<span style="color:#f92672">from</span> . <span style="color:#f92672">import</span> db
+
+<span style="color:#66d9ef">def</span> <span style="color:#a6e22e">by_id</span>(id_):
+    <span style="color:#66d9ef">return</span> db<span style="color:#f92672">.</span>select(id<span style="color:#f92672">=</span>id_)
+
+
+<span style="color:#75715e"># payments/manual.py</span>
+<span style="color:#f92672">from</span> billing <span style="color:#f92672">import</span> invoices
+
+<span style="color:#f92672">from</span> . <span style="color:#f92672">import</span> validate
+
+<span style="color:#66d9ef">def</span> <span style="color:#a6e22e">create</span>(data):
+    data <span style="color:#f92672">=</span> validate<span style="color:#f92672">.</span>manual_invoice(data)
+    invoice <span style="color:#f92672">=</span> invoices<span style="color:#f92672">.</span>create<span style="color:#f92672">.</span>new(status<span style="color:#f92672">=</span><span style="color:#e6db74">&#34;ACCEPTED&#34;</span>, data)
+    <span style="color:#66d9ef">return</span> invoice
+</code></pre></div><h2 id="заключение">Заключение</h2>
+<p>Не все из принципов <em>&ldquo;Чистой архитектуры&rdquo;</em> ещё нашли место в нашем проекте. Начав изменения с выделения бизнес-флоу и убирая детали фреймворка в отдельные модули, уже видны плюсы этого подхода: более тестируемый и ясный код. А использование выразительности Python позволяет не добавлять преждевременных абстракций и сосредоточиться на реализации интерфейсов и взаимодействиях между частями системы. Постепенно меняя нашу платформу, хочется спроектировать систему с хорошим разбиением на классы, а также создать модули с определёнными границами, понятными обязанностями и управляемыми зависимостями. Впрочем, не забывая и про принципы <em>YAGNI</em> и <em>KISS</em>.</p>
+
+</div>
+
+
+    </main>
+
+    
+      
+    
+  </body>
+</html>
